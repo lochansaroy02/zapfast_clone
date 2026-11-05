@@ -407,6 +407,43 @@ pub enum NotificationSound {
     Custom(std::path::PathBuf),
 }
 
+/// A destination the glass navigation bar can hold, as the reader picks
+/// them in Settings > Appearance.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NavItem {
+    Chats,
+    Calls,
+    /// The chat list under its Favorites filter.
+    Favorites,
+    Starred,
+    /// Shown only while chats are archived.
+    Archived,
+    /// Shown only while chats are locked.
+    Locked,
+}
+
+impl NavItem {
+    /// Every item, in the order the bar shows them.
+    pub const ALL: [Self; 6] = [
+        Self::Chats,
+        Self::Calls,
+        Self::Favorites,
+        Self::Starred,
+        Self::Archived,
+        Self::Locked,
+    ];
+    /// A phone's few tabs: Archived and Locked show only when they hold
+    /// chats, so the bar is usually Chats, Calls, Favorites and Settings.
+    pub const DEFAULT: [Self; 5] = [
+        Self::Chats,
+        Self::Calls,
+        Self::Favorites,
+        Self::Archived,
+        Self::Locked,
+    ];
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -429,6 +466,9 @@ pub struct Settings {
     /// Navigation in a floating bar of liquid glass at the foot of the chat
     /// list, as on a phone, instead of the rail beside it. Off by default.
     pub glass_navigation: bool,
+    /// The destinations the glass navigation bar holds, in its own order;
+    /// Settings is always there besides them.
+    pub glass_nav_items: Vec<NavItem>,
     /// Interface language. `None` follows the operating system's locale.
     pub interface_language: Option<crate::i18n::Locale>,
     /// Filename of the selected local JSON palette.
@@ -563,6 +603,7 @@ impl Default for Settings {
             font: FontChoice::Roboto,
             custom_titlebar: false,
             glass_navigation: false,
+            glass_nav_items: NavItem::DEFAULT.to_vec(),
             interface_language: None,
             custom_theme: None,
             custom_theme_cache: None,

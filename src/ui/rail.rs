@@ -9,7 +9,7 @@ use egui::{Frame, Margin, Rect, Sense, Vec2, vec2};
 
 use crate::app::App;
 use crate::i18n::gettext;
-use crate::model::{Action, Page};
+use crate::model::{Action, ChatFilter, Page};
 use crate::theme::{self, Icon, Palette};
 
 use super::focus::{Stop, TabStop};
@@ -68,6 +68,8 @@ pub fn lights_overhang(ctx: &egui::Context) -> f32 {
 pub enum Destination {
     Chats,
     Calls,
+    /// The chat list under its Favorites filter: only the glass bar offers it.
+    Favorites,
     Starred,
     Archived,
     Locked,
@@ -78,8 +80,12 @@ impl Destination {
     /// Whether the window shows this destination now: its icon is lit.
     pub fn lit(self, app: &App) -> bool {
         let chats = app.page == Page::Chats && !app.show_starred;
+        let list = chats && !app.show_archived && !app.locked_folder_open();
+        let favorites = app.chat_filter == ChatFilter::Favorites;
         match self {
-            Self::Chats => chats && !app.show_archived && !app.locked_folder_open(),
+            // While the bar has a Favorites tab, that one is lit instead.
+            Self::Chats => list && !(favorites && favorites_tab(app)),
+            Self::Favorites => list && favorites,
             Self::Calls => app.page == Page::Calls,
             Self::Starred => app.page == Page::Chats && app.show_starred,
             Self::Archived => chats && app.show_archived,
@@ -119,6 +125,19 @@ impl Destination {
                 if app.locked_folder {
                     actions.push(Action::CloseLockedFolder);
                 }
+                if app.chat_filter == ChatFilter::Favorites && favorites_tab(app) {
+                    actions.push(Action::SetChatFilter(ChatFilter::All));
+                }
+            }
+            Self::Favorites => {
+                to_chats(&mut actions);
+                if app.show_archived {
+                    actions.push(Action::ShowArchived(false));
+                }
+                // Choosing a filter leaves the locked folder too.
+                if app.chat_filter != ChatFilter::Favorites || app.locked_folder {
+                    actions.push(Action::SetChatFilter(ChatFilter::Favorites));
+                }
             }
             Self::Calls => {
                 if app.page != Page::Calls {
@@ -153,6 +172,12 @@ impl Destination {
         }
         actions
     }
+}
+
+/// Whether the glass bar has a Favorites tab, which takes the Favorites
+/// filter's light from Chats.
+fn favorites_tab(app: &App) -> bool {
+    super::tab_bar::holds(app, crate::settings::NavItem::Favorites)
 }
 
 /// The rail as a fixed panel on the left, with the chats' avatars between
@@ -289,16 +314,6 @@ pub(super) struct Look {
     pub badge: u32,
 }
 
-/// Every destination, in the order the rail and the glass bar show them.
-pub(super) const ALL: [Destination; 6] = [
-    Destination::Chats,
-    Destination::Calls,
-    Destination::Starred,
-    Destination::Archived,
-    Destination::Locked,
-    Destination::Settings,
-];
-
 pub(super) fn look(app: &App, destination: Destination) -> Look {
     let name = |text: &'static str| gettext(app.locale, text).into_owned();
     let shortcut =
@@ -316,6 +331,13 @@ pub(super) fn look(app: &App, destination: Destination) -> Look {
             stop: Stop::Calls,
             name: name("Calls"),
             tooltip: shortcut("Calls", "Ctrl+Shift+2"),
+            badge: 0,
+        },
+        Destination::Favorites => Look {
+            icon: Icon::Heart,
+            stop: Stop::FavoritesTab,
+            name: name("Favorites"),
+            tooltip: name("Favorites"),
             badge: 0,
         },
         Destination::Starred => Look {

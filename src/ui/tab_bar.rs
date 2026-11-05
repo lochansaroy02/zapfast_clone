@@ -4,14 +4,19 @@
 //! turns it on; the rail then steps aside wherever the full list shows, and
 //! stays where the list is collapsed to its avatars, which only it holds.
 //!
+//! The reader picks which destinations it holds (Settings > Appearance), and
+//! Settings is always among them; our avatar, the account switcher, moves to
+//! the list header's corner.
+//!
 //! The list scrolls on beneath the bar: what passes under it is blurred and
-//! bent at the rim by [`super::glass::lens`], then tinted, edged with light,
+//! bent at the rim by `glass::lens`, then tinted, edged with light,
 //! and the lit destination sits on a lighter capsule that slides from tab to
 //! tab.
 
 use egui::{Align2, Color32, Margin, Rect, Sense, Stroke, StrokeKind, Vec2, pos2, vec2};
 
 use crate::app::App;
+use crate::settings::NavItem;
 use crate::theme::{self, Palette};
 
 use super::focus::TabStop;
@@ -22,14 +27,15 @@ use super::widgets;
 const HEIGHT: f32 = 62.0;
 /// Space between the bar and the list's sides and foot.
 const MARGIN: f32 = 12.0;
-/// The widest the bar grows in a wide list.
-const MAX_WIDTH: f32 = 440.0;
+/// The width an item takes when the list has room for it; the bar is as
+/// wide as its items need, centred, and narrows them in a narrow list.
+const SLOT: f32 = 76.0;
 /// Space inside the bar around its items.
 const PAD: f32 = 5.0;
 /// A destination's icon.
 const ICON: f32 = 21.0;
-/// Our avatar, the account switcher, at the bar's end.
-const AVATAR: f32 = 30.0;
+/// Our avatar, the account switcher, in the list header's corner.
+pub const AVATAR: f32 = 30.0;
 /// The least width an item needs to carry its name under its icon.
 const NAMED: f32 = 58.0;
 /// How long the lit capsule takes to slide to another tab.
@@ -38,6 +44,40 @@ const SLIDE: f32 = 0.28;
 /// Whether the glass bar takes the rail's place beside the full list.
 pub fn active(app: &App) -> bool {
     app.settings.glass_navigation
+}
+
+/// Whether the bar is on and holds `item`.
+pub fn holds(app: &App, item: NavItem) -> bool {
+    active(app) && app.settings.glass_nav_items.contains(&item)
+}
+
+/// The destinations the bar shows now: the reader's picks that are offered,
+/// in the bar's order, then Settings.
+pub fn destinations(app: &App) -> Vec<Destination> {
+    NavItem::ALL
+        .into_iter()
+        .filter(|item| app.settings.glass_nav_items.contains(item))
+        .map(|item| match item {
+            NavItem::Chats => Destination::Chats,
+            NavItem::Calls => Destination::Calls,
+            NavItem::Favorites => Destination::Favorites,
+            NavItem::Starred => Destination::Starred,
+            NavItem::Archived => Destination::Archived,
+            NavItem::Locked => Destination::Locked,
+        })
+        .chain([Destination::Settings])
+        .filter(|destination| destination.offered(app))
+        .collect()
+}
+
+/// Our avatar at the start of the list header while the bar is on, as a
+/// phone puts the profile in the top corner, with a gap after it.
+pub fn profile(app: &mut App, ui: &mut egui::Ui) {
+    if !active(app) {
+        return;
+    }
+    super::accounts::avatar_button(app, ui, AVATAR).tab_stop(super::focus::Stop::Profile);
+    ui.add_space(10.0);
 }
 
 /// Where the bar was laid out, for layout tests.
@@ -69,8 +109,10 @@ pub fn covered(app: &App) -> f32 {
 /// clicks from the rows beneath.
 pub fn show(app: &mut App, ui: &mut egui::Ui, area: Rect) {
     let palette = app.palette;
-    let width = (area.width() - 2.0 * MARGIN).clamp(0.0, MAX_WIDTH);
-    if width < 4.0 * HEIGHT / 2.0 {
+    let destinations = destinations(app);
+    let slots = destinations.len();
+    let width = (area.width() - 2.0 * MARGIN).min(slots as f32 * SLOT + 2.0 * PAD);
+    if width < HEIGHT {
         return;
     }
     let bar = Rect::from_center_size(
@@ -84,11 +126,6 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, area: Rect) {
     // on the row beneath it.
     ui.interact(bar, rect_id(), Sense::click());
 
-    let destinations: Vec<Destination> = rail::ALL
-        .into_iter()
-        .filter(|destination| destination.offered(app))
-        .collect();
-    let slots = destinations.len() + 1;
     let inner = bar.shrink(PAD);
     let slot = inner.width() / slots as f32;
     let named = slot >= NAMED;
@@ -135,13 +172,6 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, area: Rect) {
     for (index, destination) in destinations.into_iter().enumerate() {
         item(app, ui, &palette, destination, cell(index), named);
     }
-
-    // Our avatar at the end, as at the foot of the rail.
-    let end = cell(slots - 1);
-    let avatar = Rect::from_center_size(end.center(), Vec2::splat(AVATAR));
-    ui.scope_builder(egui::UiBuilder::new().max_rect(avatar), |ui| {
-        super::accounts::avatar_button(app, ui, AVATAR).tab_stop(super::focus::Stop::Profile);
-    });
 }
 
 /// The glass itself: a soft shadow, the blurred and bent content beneath,
@@ -266,5 +296,84 @@ fn item(
     if response.clicked() {
         let actions = destination.actions(app);
         app.actions.extend(actions);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{Action, ChatFilter};
+
+    fn app(items: &[NavItem]) -> (tempfile::TempDir, App) {
+        let root = tempfile::tempdir().unwrap();
+        let settings = crate::settings::Settings {
+            glass_navigation: true,
+            glass_nav_items: items.to_vec(),
+            ..Default::default()
+        };
+        let app = App::headless(crate::paths::AppDirs::under(root.path()), settings).0;
+        (root, app)
+    }
+
+    #[test]
+    fn the_bar_holds_the_picks_in_its_order_then_settings() {
+        let (_root, mut app) = app(&[NavItem::Starred, NavItem::Chats]);
+        assert_eq!(
+            destinations(&app),
+            [
+                Destination::Chats,
+                Destination::Starred,
+                Destination::Settings
+            ]
+        );
+        // Settings stays when nothing else is picked.
+        app.settings.glass_nav_items.clear();
+        assert_eq!(destinations(&app), [Destination::Settings]);
+    }
+
+    #[test]
+    fn archived_shows_only_while_chats_are_archived() {
+        let (_root, mut app) = app(&NavItem::DEFAULT);
+        assert_eq!(
+            destinations(&app),
+            [
+                Destination::Chats,
+                Destination::Calls,
+                Destination::Favorites,
+                Destination::Settings
+            ]
+        );
+        let mut chat = crate::model::Chat::new("1@s.whatsapp.net".into(), "Ada".into());
+        chat.archived = true;
+        chat.last_activity = 1;
+        app.chats.push(chat);
+        assert!(destinations(&app).contains(&Destination::Archived));
+    }
+
+    /// The Favorites tab is lit under the Favorites filter instead of Chats,
+    /// and Chats takes the filter off again.
+    #[test]
+    fn favorites_and_chats_share_the_list() {
+        let (_root, mut app) = app(&NavItem::DEFAULT);
+        assert!(Destination::Chats.lit(&app));
+        assert!(!Destination::Favorites.lit(&app));
+        assert!(matches!(
+            Destination::Favorites.actions(&app).as_slice(),
+            [Action::SetChatFilter(ChatFilter::Favorites)]
+        ));
+        app.chat_filter = ChatFilter::Favorites;
+        assert!(Destination::Favorites.lit(&app));
+        assert!(!Destination::Chats.lit(&app));
+        assert!(Destination::Favorites.actions(&app).is_empty());
+        assert!(matches!(
+            Destination::Chats.actions(&app).as_slice(),
+            [Action::SetChatFilter(ChatFilter::All)]
+        ));
+        // Without the tab, Chats keeps its light under any filter.
+        app.settings
+            .glass_nav_items
+            .retain(|item| *item != NavItem::Favorites);
+        assert!(Destination::Chats.lit(&app));
+        assert!(Destination::Chats.actions(&app).is_empty());
     }
 }

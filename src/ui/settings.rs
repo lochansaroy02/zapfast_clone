@@ -420,6 +420,16 @@ fn sections(app: &App) -> Vec<Section> {
         ),
         |settings| &mut settings.glass_navigation,
     );
+    if app.settings.glass_navigation {
+        appearance.row(
+            translated(locale, "Bar items"),
+            translated(
+                locale,
+                "Settings is always there. Archived and Locked show only while chats are archived or locked.",
+            ),
+            nav_items_picker,
+        );
+    }
     appearance.row(translated(locale, "Language"), "", language_picker);
     // macOS keeps its own traffic lights over ZapFast's headers.
     if cfg!(any(windows, target_os = "linux")) {
@@ -1877,6 +1887,54 @@ fn about(app: &mut App, ui: &mut egui::Ui) {
         app.actions
             .push(Action::OpenUrl(widgets::AUTHOR_URL.to_owned()));
     }
+}
+
+/// Chips for the destinations the glass navigation bar holds, each turned
+/// on and off with a click.
+fn nav_items_picker(ui: &mut egui::Ui, app: &mut App) {
+    use crate::settings::NavItem;
+    let palette = app.palette;
+    // The row's controls lay out right to left; the chips read in the bar's
+    // order, left to right, wrapping in a narrow window.
+    let layout = egui::Layout::left_to_right(egui::Align::Center).with_main_wrap(true);
+    ui.allocate_ui_with_layout(
+        egui::vec2(ui.available_width().min(300.0), 0.0),
+        layout,
+        |ui| {
+            ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
+            for item in NavItem::ALL {
+                let label = crate::i18n::gettext(
+                    app.locale,
+                    match item {
+                        NavItem::Chats => "Chats",
+                        NavItem::Calls => "Calls",
+                        NavItem::Favorites => "Favorites",
+                        NavItem::Starred => "Starred",
+                        NavItem::Archived => "Archived",
+                        NavItem::Locked => "Locked",
+                    },
+                );
+                let on = app.settings.glass_nav_items.contains(&item);
+                let response = widgets::filter_chip(ui, &palette, &label, 0, on);
+                response.widget_info(|| {
+                    egui::WidgetInfo::selected(
+                        egui::WidgetType::Checkbox,
+                        ui.is_enabled(),
+                        on,
+                        &*label,
+                    )
+                });
+                if response.clicked() {
+                    if on {
+                        app.settings.glass_nav_items.retain(|kept| *kept != item);
+                    } else {
+                        app.settings.glass_nav_items.push(item);
+                    }
+                    app.actions.push(Action::SettingsChanged);
+                }
+            }
+        },
+    );
 }
 
 /// The Custom title bar switch. Turning it over replaces the window, so it

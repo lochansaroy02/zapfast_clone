@@ -174,6 +174,7 @@ fn header(app: &mut App, ui: &mut egui::Ui) {
                 Layout::left_to_right(Align::Center),
                 |ui| {
                     ui.add_space(room.left);
+                    super::tab_bar::profile(app, ui);
                     let buttons = list_header_buttons(app, ui.ctx());
                     // The title measures its room from the buttons and the
                     // caption buttons' room after them.
@@ -517,6 +518,7 @@ fn macos_header(app: &mut App, ui: &mut egui::Ui) {
                 } else {
                     super::rail::lights_overhang(ui.ctx())
                 });
+                super::tab_bar::profile(app, ui);
                 let buttons = list_header_buttons(app, ui.ctx());
                 if app.page == Page::Calls && app.new_call {
                     new_call_header(app, ui, 16.0, header_buttons_width(ui, &buttons));
