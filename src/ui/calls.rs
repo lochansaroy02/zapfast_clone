@@ -251,6 +251,7 @@ fn history(app: &mut App, ui: &mut egui::Ui) {
     egui::ScrollArea::vertical()
         .id_salt("call-history")
         .auto_shrink([false, false])
+        .content_margin(super::tab_bar::bottom_margin(app))
         .show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
             if rows.is_empty() {
@@ -548,6 +549,7 @@ fn new_call_list(app: &mut App, ui: &mut egui::Ui) {
     egui::ScrollArea::vertical()
         .id_salt("new-call-contacts")
         .auto_shrink([false, false])
+        .content_margin(super::tab_bar::bottom_margin(app))
         .show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
             if !frequent.is_empty() {

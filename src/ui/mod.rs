@@ -28,6 +28,7 @@ pub mod picker;
 pub mod polls;
 pub mod rail;
 pub mod settings;
+pub mod tab_bar;
 pub mod update;
 mod voice_bar;
 pub mod widgets;
@@ -161,14 +162,23 @@ fn main_view(app: &mut App, ui: &mut egui::Ui, list_only: bool) {
     // step aside while the panel is open. The Calls tab's history needs the
     // full list pane: only the chats collapse into the rail's avatars.
     let full_list = app.sidebar_mode() == SidebarDisplayMode::Expanded || app.page == Page::Calls;
-    let mut list_width = chats::compact_width(ui.ctx());
+    // The glass bar at the list's foot takes the rail's place beside the
+    // full list; the collapsed list's avatars still live in the rail.
+    let rail = !(full_list && tab_bar::active(app));
+    let mut list_width = if rail {
+        chats::compact_width(ui.ctx())
+    } else {
+        0.0
+    };
     if full_list {
         list_width += app.settings.sidebar_width;
     }
     let crowded = app.info_visible()
         && ui.available_width() - list_width < pane::INFO_MIN + pane::INFO_CONVERSATION_MIN;
     if !narrow(ui.ctx()) && !crowded {
-        rail::show(app, ui, !full_list);
+        if rail {
+            rail::show(app, ui, !full_list);
+        }
         if full_list {
             chats::show(app, ui);
         }
@@ -1406,6 +1416,69 @@ mod idle_tests {
         // Widening mid-slide drops it, and narrowing again does not slide.
         assert_eq!(at(2.05, None), None);
         assert_eq!(at(2.1, Some(NarrowView::Detail)), None);
+    }
+
+    /// With the glass bar on, it stands in for the rail at the foot of the
+    /// list, wide or narrow, and the rail comes back for the collapsed list.
+    #[test]
+    fn the_glass_bar_replaces_the_rail_beside_the_full_list() {
+        let root = tempfile::tempdir().unwrap();
+        let settings = crate::settings::Settings {
+            glass_navigation: true,
+            ..Default::default()
+        };
+        let mut app = App::headless(crate::paths::AppDirs::under(root.path()), settings).0;
+        app.link = LinkStatus::Connected;
+        let chat = crate::model::Chat::new("123@s.whatsapp.net".into(), "Alice".into());
+        app.chats.push(chat.clone());
+        let ctx = egui::Context::default();
+        theme::install(&ctx);
+        let run = |app: &mut App, width: f32| {
+            ctx.data_mut(|data| {
+                data.remove::<egui::Rect>(chats::header_row_id());
+                data.remove::<egui::Rect>(rail::rect_id());
+                data.remove::<egui::Rect>(tab_bar::rect_id());
+            });
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(width, 780.0),
+                    )),
+                    ..Default::default()
+                },
+                |ui| show(app, ui),
+            );
+            output.textures_delta.clear();
+            ctx.data(|data| {
+                (
+                    data.get_temp::<egui::Rect>(chats::header_row_id()),
+                    data.get_temp::<egui::Rect>(rail::rect_id()),
+                    data.get_temp::<egui::Rect>(tab_bar::rect_id()),
+                )
+            })
+        };
+        for (width, open) in [(1180.0, Some(chat.id.clone())), (480.0, None)] {
+            app.open_chat = open;
+            let (list, rail, bar) = run(&mut app, width);
+            let list = list.expect("the chat list is drawn");
+            assert!(rail.is_none(), "no rail beside the full list at {width}");
+            let bar = bar.expect("the glass bar is drawn");
+            assert!(
+                bar.left() >= list.left() - 14.0 && bar.right() <= list.right() + 14.0,
+                "the bar stays within the list: {bar:?} {list:?}"
+            );
+            assert!(
+                bar.bottom() > 740.0 && bar.bottom() < 780.0,
+                "the bar floats at the foot: {bar:?}"
+            );
+        }
+        // Collapsed to its avatars, the list lives in the rail again.
+        app.open_chat = Some(chat.id.clone());
+        app.sidebar_visible = false;
+        let (_, rail, bar) = run(&mut app, 1180.0);
+        assert!(rail.is_some(), "the rail holds the collapsed list");
+        assert!(bar.is_none());
     }
 
     #[test]

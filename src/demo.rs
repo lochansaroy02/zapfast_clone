@@ -3317,6 +3317,10 @@ pub fn apply_flags(app: &mut App, page: Option<&str>) {
             "light" => {
                 app.settings.theme = ThemeChoice::Light;
             }
+            // The glass navigation bar at the foot of the list, not the rail.
+            "glass-nav" => {
+                app.settings.glass_navigation = true;
+            }
             "messages" => {
                 app.settings.theme = ThemeChoice::Messages;
             }
@@ -9769,6 +9773,9 @@ mod tests {
             "accounts-muted,light",
             "account-menu",
             "light",
+            "glass-nav",
+            "glass-nav,light",
+            "glass-nav,calls",
             "archived",
             "chat-search",
             "chat-search-day",

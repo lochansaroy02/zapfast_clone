@@ -276,6 +276,85 @@ fn show_list_button(app: &mut App, ui: &mut egui::Ui, palette: &Palette) {
     );
 }
 
+/// How a destination is drawn wherever it is offered: in the rail or in the
+/// glass bar at the foot of the list.
+pub(super) struct Look {
+    pub icon: Icon,
+    pub stop: Stop,
+    /// Its short name, under its icon in the glass bar.
+    pub name: String,
+    /// Its name and shortcut, or what a click does now.
+    pub tooltip: String,
+    /// Unread chats it holds, for Archived.
+    pub badge: u32,
+}
+
+/// Every destination, in the order the rail and the glass bar show them.
+pub(super) const ALL: [Destination; 6] = [
+    Destination::Chats,
+    Destination::Calls,
+    Destination::Starred,
+    Destination::Archived,
+    Destination::Locked,
+    Destination::Settings,
+];
+
+pub(super) fn look(app: &App, destination: Destination) -> Look {
+    let name = |text: &'static str| gettext(app.locale, text).into_owned();
+    let shortcut =
+        |text: &'static str, keys: &str| format!("{} ({})", name(text), super::keys::label(keys));
+    match destination {
+        Destination::Chats => Look {
+            icon: Icon::MessageCircle,
+            stop: Stop::Chats,
+            name: name("Chats"),
+            tooltip: shortcut("Chats", "Ctrl+Shift+1"),
+            badge: 0,
+        },
+        Destination::Calls => Look {
+            icon: Icon::Phone,
+            stop: Stop::Calls,
+            name: name("Calls"),
+            tooltip: shortcut("Calls", "Ctrl+Shift+2"),
+            badge: 0,
+        },
+        Destination::Starred => Look {
+            icon: Icon::Star,
+            stop: Stop::Starred,
+            name: name("Starred"),
+            tooltip: name("Starred messages"),
+            badge: 0,
+        },
+        // The count the Archived chip carried: archived chats unread.
+        Destination::Archived => Look {
+            icon: Icon::Archive,
+            stop: Stop::Archived,
+            name: name("Archived"),
+            tooltip: name("Archived"),
+            badge: app.archived_unread() as u32,
+        },
+        Destination::Locked => Look {
+            icon: Icon::Lock,
+            stop: Stop::Locked,
+            name: name("Locked"),
+            tooltip: name("Locked"),
+            badge: 0,
+        },
+        // Same as before the rail: the label says what the click does now.
+        Destination::Settings => Look {
+            icon: Icon::Settings,
+            stop: Stop::Settings,
+            name: name("Settings"),
+            tooltip: super::keys::label(if destination.lit(app) {
+                "Close settings (Ctrl+,)"
+            } else {
+                "Settings (Ctrl+,)"
+            }),
+            badge: 0,
+        },
+    }
+}
+
 /// One destination: its icon on a rounded plate, lit as the selected chat
 /// row is while the window shows it, with its name and shortcut in the
 /// tooltip, in a cell `height` points tall.
@@ -287,56 +366,13 @@ fn destination_button(
     height: f32,
 ) {
     let lit = destination.lit(app);
-    let mut badge = 0;
-    let (icon, stop, label) = match destination {
-        Destination::Chats => (
-            Icon::MessageCircle,
-            Stop::Chats,
-            format!(
-                "{} ({})",
-                gettext(app.locale, "Chats"),
-                super::keys::label("Ctrl+Shift+1")
-            ),
-        ),
-        Destination::Calls => (
-            Icon::Phone,
-            Stop::Calls,
-            format!(
-                "{} ({})",
-                gettext(app.locale, "Calls"),
-                super::keys::label("Ctrl+Shift+2")
-            ),
-        ),
-        Destination::Starred => (
-            Icon::Star,
-            Stop::Starred,
-            gettext(app.locale, "Starred messages").into_owned(),
-        ),
-        Destination::Archived => {
-            // The count the Archived chip carried: archived chats unread.
-            badge = app.archived_unread() as u32;
-            (
-                Icon::Archive,
-                Stop::Archived,
-                gettext(app.locale, "Archived").into_owned(),
-            )
-        }
-        Destination::Locked => (
-            Icon::Lock,
-            Stop::Locked,
-            gettext(app.locale, "Locked").into_owned(),
-        ),
-        // Same as before the rail: the label says what the click does now.
-        Destination::Settings => (
-            Icon::Settings,
-            Stop::Settings,
-            super::keys::label(if lit {
-                "Close settings (Ctrl+,)"
-            } else {
-                "Settings (Ctrl+,)"
-            }),
-        ),
-    };
+    let Look {
+        icon,
+        stop,
+        tooltip: label,
+        badge,
+        ..
+    } = look(app, destination);
     let (cell, _) = ui.allocate_exact_size(vec2(ui.available_width(), height), Sense::hover());
     let plate = Rect::from_center_size(cell.center(), Vec2::splat(PLATE));
     let response = ui

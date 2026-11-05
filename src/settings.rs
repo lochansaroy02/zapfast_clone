@@ -426,6 +426,9 @@ pub struct Settings {
     /// drivers a frameless window shows a black band at the top and its
     /// clicks land below where they are drawn (Spotifast #348, #554).
     pub custom_titlebar: bool,
+    /// Navigation in a floating bar of liquid glass at the foot of the chat
+    /// list, as on a phone, instead of the rail beside it. Off by default.
+    pub glass_navigation: bool,
     /// Interface language. `None` follows the operating system's locale.
     pub interface_language: Option<crate::i18n::Locale>,
     /// Filename of the selected local JSON palette.
@@ -559,6 +562,7 @@ impl Default for Settings {
             messages_theme: false,
             font: FontChoice::Roboto,
             custom_titlebar: false,
+            glass_navigation: false,
             interface_language: None,
             custom_theme: None,
             custom_theme_cache: None,

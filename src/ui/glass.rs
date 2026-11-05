@@ -9,6 +9,10 @@
 //! writes it back, blurred at the top and easing to sharp over the bottom
 //! `fade`, so the messages do not stop at a line. Callers keep it within
 //! the header, as macOS does.
+//!
+//! [`lens`] is the same blur in a rounded shape, as a floating bar of liquid
+//! glass: nothing outside the rounded rectangle is touched, and near its rim
+//! the content bends inwards, as it would through a thick pane.
 
 use std::sync::{Arc, Mutex};
 
@@ -19,6 +23,10 @@ use eframe::glow::{self, HasContext};
 const DOWNSCALE: i32 = 2;
 /// Horizontal and vertical passes over the small copy. Each widens the blur.
 const PASSES: usize = 1;
+/// The lens blurs a little more, so its icons read over busy rows.
+const LENS_PASSES: usize = 2;
+/// How far in from a lens's rim, in points, its content bends.
+const LENS_BEVEL: f32 = 14.0;
 /// How much more saturated the blur is than what it covers, as glass that
 /// gathers the colours behind it.
 const SATURATION: f32 = 1.3;
@@ -26,10 +34,52 @@ const SATURATION: f32 = 1.3;
 /// A paint callback that frosts `rect`, the bottom `fade` points easing from
 /// blurred to sharp.
 pub fn shape(rect: egui::Rect, fade: f32) -> egui::Shape {
+    callback(
+        rect,
+        Look {
+            fade,
+            radius: 0.0,
+            bevel: 0.0,
+            passes: PASSES,
+        },
+    )
+}
+
+/// A paint callback that turns the rounded rectangle `rect`, with corners of
+/// `radius` points, into liquid glass: blurred throughout, bent near its rim,
+/// and untouched outside it.
+pub fn lens(rect: egui::Rect, radius: f32) -> egui::Shape {
+    callback(
+        rect,
+        Look {
+            fade: 0.0,
+            radius,
+            bevel: LENS_BEVEL.min(radius),
+            passes: LENS_PASSES,
+        },
+    )
+}
+
+/// How a region is frosted, in points.
+#[derive(Clone, Copy)]
+struct Look {
+    fade: f32,
+    radius: f32,
+    bevel: f32,
+    passes: usize,
+}
+
+fn callback(rect: egui::Rect, look: Look) -> egui::Shape {
     egui::Shape::Callback(egui::PaintCallback {
         rect,
         callback: Arc::new(egui_glow::CallbackFn::new(move |info, painter| {
-            let fade = (fade * info.pixels_per_point).round() as i32;
+            let scale = info.pixels_per_point;
+            let pixels = Look {
+                fade: (look.fade * scale).round(),
+                radius: look.radius * scale,
+                bevel: look.bevel * scale,
+                passes: look.passes,
+            };
             let gl = painter.gl();
             let mut glass = GLASS.lock().unwrap_or_else(|p| p.into_inner());
             // A window made anew has a new context; the old one took its
@@ -40,7 +90,7 @@ pub fn shape(rect: egui::Rect, fade: f32) -> egui::Shape {
             }
             if let Some((_, Some(glass))) = glass.as_mut() {
                 // SAFETY: as above.
-                unsafe { glass.frost(gl, &info, fade) };
+                unsafe { glass.frost(gl, &info, pixels) };
             }
         })),
     })
@@ -102,15 +152,44 @@ uniform sampler2D u_sharp;
 uniform sampler2D u_blur;
 uniform float u_fade;
 uniform float u_saturation;
+// A lens's corner radius and bevel in pixels, and the region's size; a
+// radius of zero frosts the whole rectangle and bends nothing.
+uniform float u_radius;
+uniform float u_bevel;
+uniform vec2 u_size;
 in vec2 v_uv;
 out vec4 o_color;
+
+float rounded(vec2 p, vec2 extent, float r) {
+    vec2 q = abs(p) - extent + r;
+    return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
+}
+
 void main() {
-    vec4 blur = texture(u_blur, v_uv);
+    vec2 uv = v_uv;
+    if (u_radius > 0.0) {
+        vec2 extent = u_size * 0.5;
+        vec2 p = (v_uv - 0.5) * u_size;
+        float d = rounded(p, extent, u_radius);
+        if (d > 0.0) {
+            discard;
+        }
+        // The rim's outward direction, and how close to the rim this is:
+        // content there is drawn from further in, as through a thick pane.
+        vec2 e = vec2(1.0, 0.0);
+        vec2 normal = vec2(
+            rounded(p + e.xy, extent, u_radius) - rounded(p - e.xy, extent, u_radius),
+            rounded(p + e.yx, extent, u_radius) - rounded(p - e.yx, extent, u_radius));
+        normal /= max(length(normal), 1e-4);
+        float rim = 1.0 - smoothstep(0.0, max(u_bevel, 1.0), -d);
+        uv -= normal * rim * rim * u_bevel * 0.7 / u_size;
+    }
+    vec4 blur = texture(u_blur, uv);
     float luma = dot(blur.rgb, vec3(0.2126, 0.7152, 0.0722));
     // Colours are premultiplied, so they stay within their alpha.
     blur.rgb = clamp(mix(vec3(luma), blur.rgb, u_saturation), 0.0, blur.a);
     float frost = u_fade > 0.0 ? smoothstep(0.0, u_fade, v_uv.y) : 1.0;
-    o_color = mix(texture(u_sharp, v_uv), blur, frost);
+    o_color = mix(texture(u_sharp, uv), blur, frost);
 }
 ";
 
@@ -139,7 +218,7 @@ impl Glass {
     }
 
     /// Blurs the region of the bound framebuffer under `info`'s rectangle.
-    unsafe fn frost(&mut self, gl: &glow::Context, info: &egui::PaintCallbackInfo, fade: i32) {
+    unsafe fn frost(&mut self, gl: &glow::Context, info: &egui::PaintCallbackInfo, look: Look) {
         let region = info.viewport_in_pixels();
         let clip = info.clip_rect_in_pixels();
         let (x, y, w, h) = (
@@ -183,7 +262,7 @@ impl Glass {
             gl.uniform_1_i32(gl.get_uniform_location(self.blur, "u_texture").as_ref(), 0);
             let step = gl.get_uniform_location(self.blur, "u_step");
             gl.viewport(0, 0, small.0, small.1);
-            for _ in 0..PASSES {
+            for _ in 0..look.passes {
                 for (from, to, direction) in [(0, 1, (1.0, 0.0)), (1, 0, (0.0, 1.0))] {
                     gl.bind_framebuffer(glow::DRAW_FRAMEBUFFER, Some(self.small[to].framebuffer));
                     gl.bind_texture(glow::TEXTURE_2D, Some(self.small[from].texture));
@@ -213,8 +292,11 @@ impl Glass {
             let uniform = |name| gl.get_uniform_location(self.compose, name);
             gl.uniform_1_i32(uniform("u_sharp").as_ref(), 0);
             gl.uniform_1_i32(uniform("u_blur").as_ref(), 1);
-            gl.uniform_1_f32(uniform("u_fade").as_ref(), fade as f32 / h as f32);
+            gl.uniform_1_f32(uniform("u_fade").as_ref(), look.fade / h as f32);
             gl.uniform_1_f32(uniform("u_saturation").as_ref(), SATURATION);
+            gl.uniform_1_f32(uniform("u_radius").as_ref(), look.radius);
+            gl.uniform_1_f32(uniform("u_bevel").as_ref(), look.bevel);
+            gl.uniform_2_f32(uniform("u_size").as_ref(), w as f32, h as f32);
             gl.draw_arrays(glow::TRIANGLES, 0, 3);
             gl.bind_texture(glow::TEXTURE_2D, None);
             gl.active_texture(glow::TEXTURE0);

@@ -25,8 +25,12 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 .inner_margin(Margin::ZERO),
         );
     let response = panel.show(ui, |ui| {
+        let area = ui.max_rect();
         header(app, ui);
         body(app, ui);
+        if super::tab_bar::active(app) {
+            super::tab_bar::show(app, ui, area);
+        }
     });
     let width = response.response.rect.width();
     if (width - app.settings.sidebar_width).abs() > 1.0 {
@@ -42,16 +46,23 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
 pub fn full_show(app: &mut App, ui: &mut egui::Ui) {
     search_keyboard(app, ui);
     let palette = app.palette;
-    super::rail::show(app, ui, false);
+    let glass = super::tab_bar::active(app);
+    if !glass {
+        super::rail::show(app, ui, false);
+    }
     egui::CentralPanel::default()
         .frame(Frame::new().fill(palette.panel).inner_margin(Margin::ZERO))
         .show(ui, |ui| {
+            let area = ui.max_rect();
             egui::Panel::top("narrow-chat-header")
                 .show_separator_line(false)
                 .frame(Frame::NONE)
                 .show(ui, |ui| header(app, ui));
             super::banner(app, ui);
             body(app, ui);
+            if glass {
+                super::tab_bar::show(app, ui, area);
+            }
         });
 }
 
@@ -499,8 +510,13 @@ fn macos_header(app: &mut App, ui: &mut egui::Ui) {
         .show(ui, |ui| {
             let row = ui.horizontal(|ui| {
                 ui.set_min_height(super::conversation::HEADER_ROW);
-                // The traffic lights reach past the rail over this header.
-                ui.add_space(super::rail::lights_overhang(ui.ctx()));
+                // The traffic lights reach past the rail over this header,
+                // or stand over it alone when the glass bar replaces the rail.
+                ui.add_space(if super::tab_bar::active(app) {
+                    theme::traffic_light_inset(ui.ctx())
+                } else {
+                    super::rail::lights_overhang(ui.ctx())
+                });
                 let buttons = list_header_buttons(app, ui.ctx());
                 if app.page == Page::Calls && app.new_call {
                     new_call_header(app, ui, 16.0, header_buttons_width(ui, &buttons));
@@ -706,6 +722,7 @@ fn starred_list(app: &mut App, ui: &mut egui::Ui) {
     let mut actions = Vec::new();
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
+        .content_margin(super::tab_bar::bottom_margin(app))
         .show(ui, |ui| {
             for entry in &app.starred {
                 if app
@@ -965,7 +982,8 @@ fn list(app: &mut App, ui: &mut egui::Ui) {
     let total = chats.len();
     let mut scroll_area = egui::ScrollArea::vertical()
         .id_salt("chat-list")
-        .auto_shrink([false, false]);
+        .auto_shrink([false, false])
+        .content_margin(super::tab_bar::bottom_margin(app));
     if to_top && near_top(ui, "chat-list", row_height) {
         scroll_area = scroll_area.vertical_scroll_offset(0.0);
     }
@@ -996,7 +1014,7 @@ fn list(app: &mut App, ui: &mut egui::Ui) {
             .y;
         let offset = row_scroll_offset(
             current,
-            ui.available_height(),
+            ui.available_height() - super::tab_bar::covered(app),
             target_row,
             row_height,
             ui.spacing().item_spacing.y,
@@ -1135,7 +1153,8 @@ fn locked_list(app: &mut App, ui: &mut egui::Ui) {
     ui.spacing_mut().item_spacing.y = 0.0;
     let mut scroll_area = egui::ScrollArea::vertical()
         .id_salt("locked-chats")
-        .auto_shrink([false, false]);
+        .auto_shrink([false, false])
+        .content_margin(super::tab_bar::bottom_margin(app));
     let target_row = app
         .scroll_chat_into_view
         .as_ref()
@@ -1148,7 +1167,7 @@ fn locked_list(app: &mut App, ui: &mut egui::Ui) {
             .y;
         let offset = row_scroll_offset(
             current,
-            ui.available_height(),
+            ui.available_height() - super::tab_bar::covered(app),
             target_row,
             theme::ROW_HEIGHT,
             ui.spacing().item_spacing.y,
@@ -1208,6 +1227,7 @@ fn results(app: &mut App, ui: &mut egui::Ui) {
     egui::ScrollArea::vertical()
         .id_salt("search-results")
         .auto_shrink([false, false])
+        .content_margin(super::tab_bar::bottom_margin(app))
         .show(ui, |ui| {
             if !chats.is_empty() {
                 section(ui, &palette, "Chats");

@@ -137,6 +137,12 @@ name or description, in the interface language or in English.
 - **Wallpaper**: WhatsApp's light and dark chat wallpaper colours, with or
   without doodles.
 - **Zoom**: interface scale, also `Ctrl+Plus`, `Ctrl+Minus` and `Ctrl+0`.
+- **Glass navigation bar** (off by default): Chats, Calls, Starred,
+  Archived, Locked, Settings and the account switcher move from the rail
+  beside the chat list into a floating bar of liquid glass at its foot, as
+  on a phone. The list scrolls on beneath it, blurred and bent at the bar's
+  rim. While the list is collapsed to its avatars, the rail still holds
+  them.
 - **Language**: the interface language, or **Auto** to follow the system.
   Brazilian Portuguese, German, Spanish, Italian, French, Russian, Simplified
   Chinese, Traditional Chinese, Turkish, and Indonesian are available; otherwise English.

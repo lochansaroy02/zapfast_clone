@@ -412,6 +412,14 @@ fn sections(app: &App) -> Vec<Section> {
             }
         },
     );
+    appearance.toggle(
+        translated(locale, "Glass navigation bar"),
+        translated(
+            locale,
+            "Chats, Calls and Settings float in a bar of glass at the foot of the chat list, as on a phone.",
+        ),
+        |settings| &mut settings.glass_navigation,
+    );
     appearance.row(translated(locale, "Language"), "", language_picker);
     // macOS keeps its own traffic lights over ZapFast's headers.
     if cfg!(any(windows, target_os = "linux")) {
