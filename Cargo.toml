@@ -283,6 +283,13 @@ raw-window-handle = "0.6"
 # plain, square grey frame there (#397). The feature applies to eframe's
 # winit, the fork in [patch.crates-io].
 winit = { version = "0.30", default-features = false, features = ["wayland-csd-adwaita"] }
+# The global menu: tells KDE Plasma's compositor which D-Bus menu belongs to
+# the window, through its appmenu protocol on Wayland and window properties
+# on X11. All already in the tree through winit, with these features.
+wayland-backend = { version = "0.3.17", default-features = false, features = ["client_system"] }
+wayland-client = "0.31.15"
+wayland-protocols-plasma = { version = "0.3.12", features = ["client"] }
+x11rb = { version = "0.13.2", default-features = false, features = ["allow-unsafe-code"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 apple-native-keyring-store = { version = "1.0.2", features = ["keychain"] }
@@ -321,6 +328,9 @@ winresource = "0.1"
 env_logger = { version = "0.11", default-features = false }
 # Creates small APNGs in sticker-import tests. Already included through image.
 png = "0.18"
+# The global menu's D-Bus interface is a Linux dependency; its tests run
+# everywhere.
+zbus = { version = "5.19", default-features = false, features = ["tokio"] }
 
 [target.'cfg(target_os = "macos")'.dev-dependencies]
 # Finds and triggers application menu items in the menu test.

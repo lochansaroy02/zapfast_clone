@@ -2717,6 +2717,10 @@ impl App {
         // Ours hands the tray its own events (#215).
         #[cfg(target_os = "macos")]
         crate::macos::attach(ctx);
+        // The global menu of a Linux desktop (KDE Plasma's), offered to the
+        // window from `main` once it draws.
+        #[cfg(target_os = "linux")]
+        crate::app_menu::attach(ctx);
         if let Some(tray) = &mut self.tray {
             tray.attach();
         }
@@ -10404,6 +10408,9 @@ impl App {
         self.handle_tray();
         #[cfg(target_os = "macos")]
         self.actions.extend(crate::macos::drain(self.window_hidden));
+        #[cfg(target_os = "linux")]
+        self.actions
+            .extend(crate::app_menu::drain(self.window_hidden));
         self.handle_control_commands();
         self.poll_custom_themes();
         let wallpaper = self.account().settings.wallpaper_image.clone();

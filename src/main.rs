@@ -790,6 +790,8 @@ impl Shell {
         }
         app.background_frame(ctx);
         app.window_logic(ctx);
+        #[cfg(target_os = "linux")]
+        zapfast::app_menu::linux::bind(frame);
         #[cfg(target_os = "windows")]
         if let (Some(window), Some(count)) = (frame.winit_window(), app.taskbar_badge_count())
             && let Some(at) = self.taskbar.show(

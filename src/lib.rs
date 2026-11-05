@@ -6,6 +6,8 @@ pub mod animation;
 pub mod announcer;
 pub mod app;
 pub mod app_lock;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+pub mod app_menu;
 #[cfg(target_os = "linux")]
 pub mod appearance;
 pub mod archive;

@@ -956,6 +956,14 @@ the button under **Calls** brings the full list back.
 In a short window, scroll the rail to reach its lower buttons. Tab and
 Shift+Tab bring the focused button into view, too.
 
+On macOS, ZapFast's menus (New Chat, Settings, editing, zoom, Keyboard
+Shortcuts) are in the menu bar. On a Linux desktop with a global menu, such
+as KDE Plasma with its **Global Menu** widget on a panel or the application
+menu button in the window's title bar, the same **File**, **Edit**, **View**
+and **Help** menus appear there, on Wayland and X11 alike. Other desktops
+show no menu, and nothing else changes. Windows has no global menu, and
+every menu item is also a keyboard shortcut or a button in the window.
+
 ## Notifications and the tray
 
 Closing the window keeps ZapFast linked in the tray, unless **Keep running when
